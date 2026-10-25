@@ -1,42 +1,71 @@
 # Platform Sağlık İzleme Simülatörü
 
-Sentetik telemetriyle çalışan, eşik tabanlı bir sağlık izleme demosu. Sıcaklık, titreşim ve gerilim ölçümlerini üretir; seçilen senaryoya göre arıza belirtilerini simüle eder ve ölçümleri etkileşimli bir panelde gösterir.
+Sentetik telemetriyle çalışan, eşik tabanlı bir sağlık izleme demosu. Python simülatörü ölçüm üretir, FastAPI bu ölçümleri doğrular, SQLite geçmişi saklar ve Streamlit paneli kayıtlı simülasyonları görselleştirir.
 
 > Bu proje bir portföy simülasyonudur. Gerçek platform verisi veya donanım bağlantısı içermez. Eşik tabanlı uyarılar verir; arıza tahmini ya da operasyonel kullanım iddiası yoktur.
 
 ## Özellikler
 
 - Normal çalışma, aşırı ısınma, yüksek titreşim ve gerilim düşümü senaryoları
-- Tekrarlanabilir sentetik veri üretimi
-- Ayarlanabilir ölçüm sayısı ve rastgelelik tohumu
-- Eşik çizgileriyle etkileşimli grafikler
-- Uyarı olaylarının tablo görünümü
-- Telemetriyi CSV olarak indirme
+- FastAPI ile ölçüm kaydetme ve geçmiş veriyi sunma
+- SQLite'ta kalıcı simülasyon ve ölçüm geçmişi
+- API üzerinden alınan, doğrulanan sensör ölçümleri
+- Eşik çizgileriyle etkileşimli grafikler ve olay tablosu
+- Seçili simülasyonu CSV olarak indirme
+- FastAPI tarafından üretilen etkileşimli API belgeleri
 
-## Başlangıç
+## Gerekli araçlar
 
-Python 3.10 veya üzeri gerekir.
+- Python 3.10 veya üzeri
 
-Windows PowerShell:
+## Windows'ta çalıştırma
+
+Proje klasöründe PowerShell aç.
+
+### İlk kurulum
 
 ~~~powershell
 py -m venv .venv
-.venv\Scripts\Activate.ps1
-py -m pip install -r requirements.txt
-streamlit run app.py
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ~~~
 
-Komut çalışınca Streamlit yerel adresini tarayıcıda aç. Uygulamada senaryo ve ölçüm sayısını değiştirerek paneli inceleyebilirsin.
+### 1. terminal: API sunucusu
 
-## Mimari
+~~~powershell
+.\.venv\Scripts\python.exe -m uvicorn api:app --reload
+~~~
+
+API hazır olduğunda belgeleri http://127.0.0.1:8000/docs adresinde açabilirsin.
+
+### 2. terminal: gösterge paneli
+
+Yeni bir PowerShell penceresi açıp aynı proje klasörüne geç ve çalıştır:
+
+~~~powershell
+.\.venv\Scripts\python.exe -m streamlit run app.py
+~~~
+
+Streamlit adresini açınca bir senaryo seçip “Senaryoyu üret ve kaydet” düğmesine bas. API servisini ve paneli aynı anda açık tut.
+
+## Veri akışı
 
 ~~~mermaid
 flowchart LR
-    A[Senaryo seçimi] --> B[Sentetik telemetri üreticisi]
-    B --> C[Eşik tabanlı olay işaretleme]
-    C --> D[Streamlit paneli]
-    C --> E[CSV dışa aktarımı]
+    A[Sentetik veri üreticisi] -->|JSON ölçümler| B[FastAPI]
+    B -->|doğrulama ve eşik kontrolü| C[SQLite]
+    C -->|geçmiş ölçüm ve olaylar| D[Streamlit paneli]
 ~~~
+
+## API uçları
+
+| Yöntem | Uç | Açıklama |
+|---|---|---|
+| GET | /health | API ve veritabanı durumunu bildirir |
+| GET | /scenarios | Kullanılabilir simülasyon senaryolarını listeler |
+| POST | /simulations | Bir simülasyonu ve ölçümlerini kaydeder |
+| GET | /simulations | Son simülasyonları listeler |
+| GET | /simulations/{id}/measurements | Seçili simülasyonun ölçümlerini getirir |
+| GET | /simulations/{id}/alerts | Seçili simülasyonun uyarılarını getirir |
 
 ## Eşikler
 
@@ -48,19 +77,10 @@ flowchart LR
 
 Değerler yalnızca demo davranışını göstermek amacıyla seçilmiştir; teknik gereksinim veya gerçek platform sınırı değildir.
 
-## Kapsam
+## Veri saklama
 
-Proje; yazılım geliştirme, telemetri görselleştirme, basit veri analizi ve sistem dokümantasyonu çalışmalarını bir araya getirir. Gerçek sistem entegrasyonu, donanım sürücüsü, makine öğrenmesi veya güvenlik sertifikasyonu içermez.
+Veriler proje klasöründe oluşan telemetry.db dosyasında tutulur. Bu dosya .gitignore ile GitHub'a gönderilmez. Geçmişi sıfırlamak için API sunucusunu durdurup telemetry.db dosyasını silebilirsin.
 
-## Portföyde sunum
+## Kapsam ve sınırlar
 
-GitHub deposuna uygulama ekran görüntüsü veya kısa ekran kaydı ekle. README'de senaryoları, kullanılan teknolojileri ve kapsam sınırlarını koru. Projeyi gerçekten tamamladıktan sonra CV'de örneğin şöyle özetleyebilirsin:
-
-> Python ve Streamlit ile sentetik platform telemetrisini görselleştiren bir sağlık izleme demosu geliştirdim; eşik tabanlı uyarılar, olay kayıtları ve CSV dışa aktarımı ekledim.
-
-## Dosyalar
-
-- app.py — Streamlit arayüzü
-- telemetry.py — sentetik ölçüm üretimi ve eşik kuralları
-- docs/ — proje gereksinimleri ve mimari notları
-
+Bu çalışma; API tasarımı, veri doğrulama, yerel veritabanı kullanımı ve görselleştirme çalışmalarını bir araya getirir. Gerçek sensör bağlantısı, kullanıcı kimlik doğrulaması, ağ üzerinden uzaktan erişim, makine öğrenmesi veya güvenlik sertifikasyonu içermez.

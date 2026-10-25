@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import os
+
 import pandas as pd
 import plotly.express as px
+import requests
 import streamlit as st
 
 from telemetry import SCENARIOS, THRESHOLDS, generate_telemetry
+
+API_URL = os.getenv("TELEMETRY_API_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(
     page_title="Platform Sağlık İzleme Simülatörü",
@@ -14,7 +19,7 @@ st.set_page_config(
 
 st.title("Platform Sağlık İzleme Simülatörü")
 st.caption(
-    "Sentetik sensör verileriyle çalışan, eşik tabanlı bir durum izleme demosu."
+    "Sentetik ölçümler FastAPI üzerinden SQLite'a kaydedilir ve geçmişten görüntülenir."
 )
 
 with st.sidebar:
@@ -23,14 +28,100 @@ with st.sidebar:
     scenario = next(key for key, label in SCENARIOS.items() if label == selected_label)
     sample_count = st.slider("Ölçüm sayısı", min_value=60, max_value=480, value=180, step=30)
     seed = st.number_input("Rastgelelik tohumu", min_value=0, max_value=999_999, value=42)
+    create_run = st.button("Senaryoyu üret ve kaydet", type="primary")
     st.divider()
-    st.caption(
-        "Eşikler: sıcaklık > 70 °C, titreşim > 1,2 g, gerilim < 21 V."
-    )
+    st.caption("Eşikler: sıcaklık > 70 °C, titreşim > 1,2 g, gerilim < 21 V.")
+    st.caption(f"API: {API_URL}")
 
-frame = pd.DataFrame(
-    generate_telemetry(scenario=scenario, samples=sample_count, seed=int(seed))
+try:
+    health_response = requests.get(f"{API_URL}/health", timeout=3)
+    health_response.raise_for_status()
+except requests.RequestException:
+    st.error(
+        "API'ye bağlanılamadı. Önce ikinci terminalde API sunucusunu başlat: "
+        "python -m uvicorn api:app --reload"
+    )
+    st.stop()
+
+if create_run:
+    generated = generate_telemetry(
+        scenario=scenario,
+        samples=sample_count,
+        seed=int(seed),
+    )
+    payload = {
+        "scenario": scenario,
+        "readings": [
+            {
+                "timestamp": row["timestamp"].isoformat(),
+                "temperature_c": row["temperature_c"],
+                "vibration_g": row["vibration_g"],
+                "voltage_v": row["voltage_v"],
+            }
+            for row in generated
+        ],
+    }
+    try:
+        response = requests.post(
+            f"{API_URL}/simulations",
+            json=payload,
+            timeout=30,
+        )
+        response.raise_for_status()
+        st.session_state["selected_run_id"] = response.json()["id"]
+        st.success("Simülasyon kaydedildi.")
+    except requests.RequestException as error:
+        st.error(f"Simülasyon kaydedilemedi: {error}")
+
+try:
+    runs_response = requests.get(f"{API_URL}/simulations", timeout=5)
+    runs_response.raise_for_status()
+    runs = runs_response.json()
+except requests.RequestException as error:
+    st.error(f"Simülasyon geçmişi alınamadı: {error}")
+    st.stop()
+
+if not runs:
+    st.info("Henüz kayıt yok. Sol menüden bir senaryo seçip simülasyonu başlat.")
+    st.stop()
+
+run_ids = [run["id"] for run in runs]
+preferred_run = st.session_state.get("selected_run_id", run_ids[0])
+selected_index = run_ids.index(preferred_run) if preferred_run in run_ids else 0
+selected_run_id = st.selectbox(
+    "Kayıtlı simülasyon",
+    options=run_ids,
+    index=selected_index,
+    format_func=lambda run_id: next(
+        (
+            f"#{run_id} · {SCENARIOS.get(run['scenario'], run['scenario'])} · "
+            f"{run['created_at'][:19].replace('T', ' ')}"
+            for run in runs
+            if run["id"] == run_id
+        ),
+        f"#{run_id}",
+    ),
 )
+
+try:
+    measurements_response = requests.get(
+        f"{API_URL}/simulations/{selected_run_id}/measurements",
+        timeout=5,
+    )
+    measurements_response.raise_for_status()
+    measurements = measurements_response.json()
+    alerts_response = requests.get(
+        f"{API_URL}/simulations/{selected_run_id}/alerts",
+        timeout=5,
+    )
+    alerts_response.raise_for_status()
+    alert_events = alerts_response.json()
+except requests.RequestException as error:
+    st.error(f"Simülasyon verisi alınamadı: {error}")
+    st.stop()
+
+frame = pd.DataFrame(measurements)
+frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
 frame["alerts_text"] = frame["alerts"].apply(lambda items: " · ".join(items))
 latest = frame.iloc[-1]
 warning_rows = frame[frame["status"] == "UYARI"]
@@ -71,13 +162,16 @@ for column, (field, title, threshold, color) in zip(chart_columns, chart_specs):
     )
     column.plotly_chart(figure, use_container_width=True)
 
-st.subheader("Olay kayıtları")
-if warning_rows.empty:
-    st.info("Seçili senaryoda eşik aşımı oluşmadı.")
+st.subheader(f"Olay kayıtları ({len(alert_events)})")
+if not alert_events:
+    st.info("Bu simülasyonda eşik aşımı oluşmadı.")
 else:
-    visible_columns = ["timestamp", "temperature_c", "vibration_g", "voltage_v", "alerts_text"]
+    alert_frame = pd.DataFrame(alert_events)
+    alert_frame["alerts_text"] = alert_frame["alerts"].apply(lambda items: " · ".join(items))
     st.dataframe(
-        warning_rows[visible_columns].rename(
+        alert_frame[
+            ["timestamp", "temperature_c", "vibration_g", "voltage_v", "alerts_text"]
+        ].rename(
             columns={
                 "timestamp": "Zaman",
                 "temperature_c": "Sıcaklık (°C)",
@@ -92,15 +186,15 @@ else:
 
 csv_bytes = frame.drop(columns=["alerts"]).to_csv(index=False).encode("utf-8-sig")
 st.download_button(
-    "Ölçüm verisini CSV indir",
+    "Seçili simülasyonu CSV indir",
     data=csv_bytes,
-    file_name="sentetik_telemetri.csv",
+    file_name=f"simulasyon_{selected_run_id}.csv",
     mime="text/csv",
 )
 
-with st.expander("Proje kapsamı ve sınırlar"):
+with st.expander("API ve proje sınırları"):
     st.write(
-        "Bu çalışma, portföy gösterimi için hazırlanmış sentetik bir simülasyondur. "
-        "Kurallar yalnızca tanımlı eşikleri uygular; gerçek platforma bağlanmaz, "
-        "arıza tahmini yaptığını iddia etmez ve operasyonel kullanım için tasarlanmamıştır."
+        "API belgeleri /docs adresinde bulunur. Ölçümler ve uyarılar yerel SQLite "
+        "veritabanında kalıcı olarak saklanır. Bu portföy demosu sentetik veri kullanır; "
+        "gerçek platforma bağlanmaz ve operasyonel kullanım için tasarlanmamıştır."
     )

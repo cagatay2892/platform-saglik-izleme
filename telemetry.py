@@ -19,12 +19,28 @@ SCENARIOS = {
 }
 
 
+def evaluate_alerts(
+    temperature_c: float,
+    vibration_g: float,
+    voltage_v: float,
+) -> list[str]:
+    """Return threshold alerts for one measurement."""
+    alerts: list[str] = []
+    if temperature_c > THRESHOLDS["temperature_c"]:
+        alerts.append("Sıcaklık eşiği aşıldı")
+    if vibration_g > THRESHOLDS["vibration_g"]:
+        alerts.append("Titreşim eşiği aşıldı")
+    if voltage_v < THRESHOLDS["voltage_v"]:
+        alerts.append("Gerilim eşiğin altına düştü")
+    return alerts
+
+
 def generate_telemetry(
     scenario: str = "normal",
     samples: int = 180,
     seed: int = 42,
 ) -> list[dict[str, Any]]:
-    """Create reproducible, synthetic telemetry rows for a demo scenario."""
+    """Create reproducible synthetic telemetry for a demo scenario."""
     if scenario not in SCENARIOS:
         raise ValueError(f"Unknown scenario: {scenario}")
     if samples < 1:
@@ -51,14 +67,7 @@ def generate_telemetry(
         elif scenario == "voltage_drop" and index >= fault_start:
             voltage -= min(6.0, (index - fault_start) * 0.14)
 
-        alerts: list[str] = []
-        if temperature > THRESHOLDS["temperature_c"]:
-            alerts.append("Sıcaklık eşiği aşıldı")
-        if vibration > THRESHOLDS["vibration_g"]:
-            alerts.append("Titreşim eşiği aşıldı")
-        if voltage < THRESHOLDS["voltage_v"]:
-            alerts.append("Gerilim eşiğin altına düştü")
-
+        alerts = evaluate_alerts(temperature, vibration, voltage)
         rows.append(
             {
                 "timestamp": start + timedelta(minutes=index),
