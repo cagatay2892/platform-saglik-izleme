@@ -2,17 +2,39 @@
 
 ## Veri akışı
 
-1. Kullanıcı arayüzden senaryo, ölçüm sayısı ve rastgelelik tohumunu seçer.
-2. telemetry.py her sensör için sentetik ölçümler üretir.
-3. Her ölçüm sıcaklık, titreşim ve gerilim eşikleriyle karşılaştırılır.
-4. app.py grafik ve olay tablosunu oluşturur; aynı kayıtları CSV olarak indirmeye açar.
+1. Streamlit panelinde senaryo, ölçüm sayısı ve rastgelelik tohumu seçilir.
+2. telemetry.py seçilen senaryo için tekrarlanabilir sentetik ölçümler üretir.
+3. Panel ölçüm listesini JSON olarak FastAPI'deki POST /simulations ucuna gönderir.
+4. API, Pydantic modeliyle veri türlerini ve tanımlı aralıkları doğrular.
+5. API ortak eşik kurallarını uygular ve simülasyon ile ölçümleri SQLite'a kaydeder.
+6. Panel simülasyon geçmişini API'den okur; grafikleri, uyarıları ve CSV indirmesini sunar.
 
 ## Modüller
 
-- app.py: Streamlit arayüzü, grafikler, uyarı tablosu ve CSV indirme.
-- telemetry.py: tekrarlanabilir telemetri simülasyonu ve eşik tabanlı olay işaretleme.
+- app.py: Streamlit arayüzü ve API istemcisi.
+- api.py: FastAPI uçları, istek doğrulama ve eşik değerlendirmesi.
+- database.py: SQLite şeması ve kalıcılık işlemleri.
+- telemetry.py: senaryo tanımları, eşikler ve sentetik ölçüm üretimi.
 - requirements.txt: uygulama bağımlılıkları.
+
+## Veritabanı
+
+- simulation_runs: senaryo adı, oluşturulma zamanı ve çalışma kimliği.
+- measurements: ölçüm zaman damgası, sıcaklık, titreşim, gerilim, durum ve uyarılar.
+
+Veritabanı proje klasöründeki telemetry.db dosyasında tutulur. Dosya .gitignore tarafından dışarıda bırakılır.
+
+## API uçları
+
+- GET /health
+- GET /scenarios
+- POST /simulations
+- GET /simulations
+- GET /simulations/{id}/measurements
+- GET /simulations/{id}/alerts
+
+FastAPI belgeleri /docs yolunda sunulur.
 
 ## Tasarım sınırları
 
-Bu sürümde veri kaynağı tamamen simülasyondur. Kalıcı veritabanı, gerçek sensör bağlantısı, kimlik doğrulama ve uzaktan iletişim yoktur. Bu sınır, portföy demosunun güvenli ve her geliştiricide kolayca çalıştırılabilir kalmasını sağlar.
+Bu sürümde veri kaynağı tamamen simülasyondur. Gerçek sensör bağlantısı, kullanıcı kimlik doğrulaması ve uzak erişim yoktur. SQLite tek dosyalı yerel veritabanı olarak geliştirme demosu için kullanılır; bu mimari operasyonel platform entegrasyonu veya sertifikasyon iddiası taşımaz.
