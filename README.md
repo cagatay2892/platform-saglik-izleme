@@ -1,5 +1,5 @@
 # Platform Sağlık İzleme Simülatörü
-
+Sentetik veri notu: Bu projedeki tüm ölçümler yazılım tarafından üretilir; gerçek sensör, platform veya operasyon verisi kullanılmaz. Eşikler demo amacıyla seçilmiştir. Proje eşik tabanlı uyarı gösterir; arıza tahmini ya da operasyonel kullanım iddiası yoktur.
 Sentetik telemetriyle çalışan, eşik tabanlı bir sağlık izleme demosu. Python simülatörü ölçüm üretir, FastAPI bu ölçümleri doğrular, SQLite geçmişi saklar ve Streamlit paneli kayıtlı simülasyonları görselleştirir.
 
 > Bu proje bir portföy simülasyonudur. Gerçek platform verisi veya donanım bağlantısı içermez. Eşik tabanlı uyarılar verir; arıza tahmini ya da operasyonel kullanım iddiası yoktur.
